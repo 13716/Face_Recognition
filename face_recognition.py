@@ -157,37 +157,49 @@ def recognize_face():
     camera_active = True
     current_camera = cv2.VideoCapture(0)
     
-    if not current_camera.isOpened():
-        messagebox.showerror("Lỗi", "Không thể kết nối camera")
-        return
+    # Thêm các thiết lập để tối ưu FPS
+    current_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    current_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    current_camera.set(cv2.CAP_PROP_FPS, 30)
+    
+    # Thêm biến đếm frame để xử lý cách frame
+    frame_count = 0
     
     def update_frame():
         if not camera_active:
             return
         
+        nonlocal frame_count
         ret, frame = current_camera.read()
         if not ret:
             stop_camera()
             return
         
-        encoding = face_lib.get_face_encoding(frame)
-        if encoding is not None:
-            label = face_lib.predict_face(encoding)
-            # Vẽ kết quả
-            faces = face_lib.detect_faces(frame)
-            for (x1, y1, x2, y2) in faces:
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, label, (x1, y1-10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        # Chỉ xử lý nhận diện mỗi 3 frame để tăng FPS
+        frame_count += 1
+        if frame_count % 3 == 0:
+            # Giảm kích thước frame để tăng tốc độ xử lý
+            small_frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
             
-            root.update_status(f"Nhận diện: {label}")
-        else:
-            root.update_status("Đang tìm kiếm khuôn mặt...")
+            encoding = face_lib.get_face_encoding(small_frame)
+            if encoding is not None:
+                label = face_lib.predict_face(encoding)
+                # Vẽ kết quả
+                faces = face_lib.detect_faces(small_frame)
+                for (x1, y1, x2, y2) in faces:
+                    # Scale lại tọa độ về kích thước gốc
+                    x1, y1, x2, y2 = x1*2, y1*2, x2*2, y2*2
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(frame, label, (x1, y1-10), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                root.update_status(f"Nhận diện: {label}")
+            else:
+                root.update_status("Đang tìm kiếm khuôn mặt...")
         
         root.update_display(frame)
         
         if camera_active:
-            root.after(10, update_frame)
+            root.after(5, update_frame)
     
     update_frame()
 
@@ -218,10 +230,47 @@ def recognize_face_from_image(image_path):
     for (x1, y1, x2, y2) in faces:
         cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cv2.putText(image, label, (x1, y1-10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                   cv2.FONT_ITALIC, 0.9, (0, 255, 0), 2)
     
     root.update_display(image)
     root.update_status(f"Nhận diện: {label}")
+
+def delete_face_data():
+    # Lấy danh sách tên
+    names = face_lib.list_all_names()
+    if not names:
+        messagebox.showwarning("Cảnh báo", "Không có dữ liệu khuôn mặt nào!")
+        return
+    
+    # Tạo cửa sổ dialog để chọn tên cần xóa
+    dialog = tk.Toplevel(root)
+    dialog.title("Xóa dữ liệu khuôn mặt")
+    dialog.geometry("300x400")
+    
+    # Tạo Listbox để hiển thị danh sách tên
+    listbox = tk.Listbox(dialog, selectmode=tk.SINGLE)
+    listbox.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+    
+    # Thêm các tên vào listbox
+    for name in names:
+        listbox.insert(tk.END, name)
+    
+    def confirm_delete():
+        if not listbox.curselection():
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn một tên để xóa!")
+            return
+        
+        selected_name = listbox.get(listbox.curselection())
+        if messagebox.askyesno("Xác nhận", f"Bạn có chắc muốn xóa dữ liệu của {selected_name}?"):
+            success, message = face_lib.delete_face(selected_name)
+            messagebox.showinfo("Kết quả", message)
+            dialog.destroy()
+            root.update_status(message)
+    
+    # Thêm nút xóa
+    delete_btn = tk.Button(dialog, text="Xóa", command=confirm_delete,
+                          bg="#f44336", fg="white", font=("Arial", 10, "bold"))
+    delete_btn.pack(pady=10)
 
 def main_menu():
     global root
@@ -267,6 +316,11 @@ def main_menu():
                  filedialog.askdirectory(title="Chọn thư mục chứa ảnh")
              ),
              width=30, height=2, bg="#2196F3", fg="white",
+             font=("Arial", 10, "bold")).pack(pady=10)
+    
+    tk.Button(main_functions, text="Xóa dữ liệu khuôn mặt", 
+             command=delete_face_data,
+             width=30, height=2, bg="#FF5722", fg="white", 
              font=("Arial", 10, "bold")).pack(pady=10)
     
     # Frame nhận diện
@@ -319,8 +373,9 @@ def main_menu():
     
     def update_display(frame):
         if frame is not None:
+            # Tối ưu việc chuyển đổi màu và resize
+            frame = cv2.resize(frame, (500, 400))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = cv2.resize(frame, (640, 480))
             img = Image.fromarray(frame)
             imgtk = ImageTk.PhotoImage(image=img)
             video_label.imgtk = imgtk
