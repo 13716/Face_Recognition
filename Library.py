@@ -75,7 +75,7 @@ class FaceRecognitionLibrary:
         """Xử lý thư mục ảnh và trả về danh sách encodings"""
         encodings = []
         for file in os.listdir(folder_path):
-            if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+            if file.lower().endswith(('.png', '.jpg', '.jpeg','.webp')):
                 img_path = os.path.join(folder_path, file)
                 image = cv2.imread(img_path)
                 if image is None:
@@ -119,13 +119,15 @@ class FaceRecognitionLibrary:
             
         with open("knn_model.pkl", "rb") as f:
             knn = pickle.load(f)
-        
+        # list_distance=[]
         # Thêm logic để kiểm tra khuôn mặt không xác định
         distances, indices = knn.kneighbors([encoding])
         nearest_distance = distances[0][0]
         
+        print(nearest_distance)
         # Nếu khoảng cách đến neighbor gần nhất lớn hơn ngưỡng, trả về "Unknown"
-        threshold = 0.4  # Có thể điều chỉnh ngưỡng này
+        threshold = 0.5  # Có thể điều chỉnh ngưỡng này
+        # if len(nearest_distance)
         if nearest_distance > threshold:
             return "Unknown"
         
@@ -137,3 +139,36 @@ class FaceRecognitionLibrary:
         faces = detector(gray)
         
         return [(face.left(), face.top(), face.right(), face.bottom()) for face in faces]
+
+    def delete_face(self, name):
+        """Xóa khuôn mặt khỏi database theo tên"""
+        try:
+            conn = sqlite3.connect("faces.db")
+            cursor = conn.cursor()
+            
+            # Kiểm tra xem tên có tồn tại không
+            cursor.execute("SELECT COUNT(*) FROM faces WHERE name = ?", (name,))
+            if cursor.fetchone()[0] == 0:
+                conn.close()
+                return False, f"Không tìm thấy dữ liệu của {name}"
+            
+            # Thực hiện xóa
+            cursor.execute("DELETE FROM faces WHERE name = ?", (name,))
+            conn.commit()
+            conn.close()
+            
+            # Retrain model sau khi xóa
+            self.train_model()
+            return True, f"Đã xóa dữ liệu của {name} thành công"
+        
+        except Exception as e:
+            return False, f"Lỗi khi xóa dữ liệu: {str(e)}"
+
+    def list_all_names(self):
+        """Liệt kê tất cả các tên trong database"""
+        conn = sqlite3.connect("faces.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT name FROM faces")
+        names = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return names
