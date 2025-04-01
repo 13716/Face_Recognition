@@ -3,8 +3,7 @@ Tải các thư viện cần sử dụng:
     pip install opencv-python
     pip install dlib
     pip install numpy
-    pip install matplotlib
-    pip install seaborn
+    pip install matplotlib 
     pip install scikit-learn
     pip install pillow
 Lưu ý:
