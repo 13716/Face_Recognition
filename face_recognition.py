@@ -219,17 +219,17 @@ def recognize_face_from_image(image_path):
         root.update_status("Không tìm thấy khuôn mặt trong ảnh!")
         return
     
-    label = face_lib.predict_face(encoding)
+    label, confidence = face_lib.predict_face(encoding)
     
     # Vẽ kết quả
     faces = face_lib.detect_faces(image)
     for (x1, y1, x2, y2) in faces:
         cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(image, label, (x1, y1-10), 
+        cv2.putText(image,  f"{label} ({confidence:.2f}%)", (x1, y1-10), 
                    cv2.FONT_ITALIC, 0.9, (0, 255, 0), 2)
     
     root.update_display(image)
-    root.update_status(f"Nhận diện: {label}")
+    root.update_status(f"Nhận diện: {label}({confidence:.2f}%)")
 
 def delete_face_data():
     # Lấy danh sách tên
